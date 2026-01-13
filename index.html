@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0b0c" />
+  <title>Max - Daily Score</title>
+
+  <!-- PWA meta -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+  <style>
+    :root{
+      --bg:#0b0b0c;
+      --panel:#121214;
+      --text:#f3f3f4;
+      --muted:#b5b5ba;
+      --good:#1f9d55;
+      --bad:#d64545;
+      --warn:#d3a22f;
+      --shadow: 0 12px 30px rgba(0,0,0,.35);
+      --r:16px;
+      --pad:16px;
+      --tap:56px;
+      --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:var(--font);
+      background: radial-gradient(1200px 900px at 30% -10%, rgba(255,255,255,.06), transparent 60%),
+                  radial-gradient(900px 800px at 90% 10%, rgba(255,255,255,.05), transparent 55%),
+                  var(--bg);
+      color:var(--text);
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+    }
+    header{
+      position:sticky; top:0; z-index:10;
+      backdrop-filter: blur(10px);
+      background: rgba(11,11,12,.7);
+      border-bottom:1px solid rgba(255,255,255,.06);
+    }
+    .wrap{max-width:880px;margin:0 auto;padding:14px 14px 24px}
+    .top{
+      display:flex; align-items:flex-end; justify-content:space-between;
+      gap:12px;
+    }
+    h1{
+      font-size:18px; margin:0; letter-spacing:.2px;
+    }
+    .date{
+      font-size:12px; color:var(--muted); margin-top:4px;
+    }
+    .actions{
+      display:flex; gap:8px; align-items:center;
+    }
+    button{
+      appearance:none; border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.04);
+      color:var(--text);
+      border-radius:12px;
+      padding:10px 12px;
+      font-size:13px;
+      line-height:1;
+      cursor:pointer;
+      user-select:none;
+    }
+    button:active{transform:translateY(1px)}
+    .btn-danger{
+      border-color: rgba(214,69,69,.45);
+      background: rgba(214,69,69,.12);
+    }
+    main{padding:18px 14px 36px}
+    .grid{
+      max-width:880px; margin:0 auto;
+      display:grid; grid-template-columns: 1.1fr .9fr;
+      gap:14px;
+    }
+    @media (max-width:860px){
+      .grid{grid-template-columns:1fr}
+    }
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      border:1px solid rgba(255,255,255,.08);
+      border-radius: var(--r);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .card h2{
+      margin:0; font-size:14px; letter-spacing:.2px;
+      padding:14px var(--pad);
+      border-bottom:1px solid rgba(255,255,255,.07);
+      color: #e9e9ee;
+    }
+    .card .content{padding: var(--pad)}
+    .kpis{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:10px;
+    }
+    .kpi{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:12px;
+      padding:12px 12px;
+      border-radius: 14px;
+      border:1px solid rgba(255,255,255,.08);
+      background: rgba(0,0,0,.20);
+      min-height: var(--tap);
+    }
+    .kpi .label{
+      display:flex; flex-direction:column; gap:4px;
+    }
+    .kpi .title{font-size:14px}
+    .kpi .desc{font-size:12px; color:var(--muted)}
+    .toggle{
+      display:flex; gap:8px;
+    }
+    .pill{
+      min-width:64px;
+      height:40px;
+      padding:0 12px;
+      display:flex; align-items:center; justify-content:center;
+      border-radius: 999px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.03);
+      font-weight:600;
+      font-size:13px;
+    }
+    .pill.good{border-color: rgba(31,157,85,.55); background: rgba(31,157,85,.16); color:#dff6e8}
+    .pill.bad{border-color: rgba(214,69,69,.55); background: rgba(214,69,69,.14); color:#ffe6e6}
+    .pill.off{opacity:.55}
+    .summary{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+    }
+    .stat{
+      border:1px solid rgba(255,255,255,.08);
+      background: rgba(0,0,0,.18);
+      border-radius: 14px;
+      padding:12px;
+      min-height:74px;
+    }
+    .stat .big{
+      font-size:24px;
+      font-weight:800;
+      letter-spacing:.3px;
+    }
+    .stat .small{
+      margin-top:6px;
+      font-size:12px;
+      color:var(--muted);
+    }
+    .history{
+      display:flex; flex-direction:column; gap:10px;
+    }
+    .row{
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      padding:10px 12px;
+      border-radius: 14px;
+      border:1px solid rgba(255,255,255,.08);
+      background: rgba(0,0,0,.18);
+    }
+    .row .left{
+      display:flex; flex-direction:column; gap:4px;
+      min-width: 0;
+    }
+    .row .d{font-size:13px; color:#e8e8ee}
+    .row .hint{font-size:12px; color:var(--muted)}
+    .dots{
+      display:flex; gap:6px; flex-wrap:nowrap;
+    }
+    .dot{
+      width:12px; height:12px; border-radius: 999px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.04);
+    }
+    .dot.good{background: rgba(31,157,85,.9); border-color: rgba(31,157,85,.9)}
+    .dot.bad{background: rgba(214,69,69,.9); border-color: rgba(214,69,69,.9)}
+    .dot.miss{background: rgba(211,162,47,.9); border-color: rgba(211,162,47,.9)}
+    .note{
+      margin-top:10px;
+      font-size:12px;
+      color:var(--muted);
+      line-height:1.35;
+    }
+    .foot{
+      margin-top:12px;
+      display:flex; gap:8px; flex-wrap:wrap;
+    }
+    .foot input{
+      flex:1;
+      min-width: 200px;
+      background: rgba(0,0,0,.20);
+      border:1px solid rgba(255,255,255,.10);
+      border-radius: 12px;
+      padding:10px 12px;
+      color: var(--text);
+      font-size:13px;
+      outline:none;
+    }
+    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
+    .toast{
+      position: fixed; left:50%; transform: translateX(-50%);
+      bottom: 18px;
+      background: rgba(18,18,20,.92);
+      border:1px solid rgba(255,255,255,.10);
+      border-radius: 999px;
+      padding:10px 14px;
+      font-size:13px;
+      color: var(--text);
+      box-shadow: var(--shadow);
+      opacity:0; pointer-events:none;
+      transition: opacity .18s ease;
+    }
+    .toast.show{opacity:1}
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="wrap">
+      <div class="top">
+        <div>
+          <h1>Daily Score</h1>
+          <div class="date" id="todayLine"></div>
+        </div>
+        <div class="actions">
+          <button id="exportBtn" class="mono" title="Export JSON">Export</button>
+          <button id="importBtn" class="mono" title="Import JSON">Import</button>
+          <button id="resetBtn" class="btn-danger mono" title="Danger: clears all data">Reset</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="grid">
+      <section class="card">
+        <h2>Today (tap fast, close app)</h2>
+        <div class="content">
+          <div class="kpis" id="kpiList"></div>
+          <div class="note">
+            Inputs are binary. No journaling. Save happens instantly.
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Scoreboard</h2>
+        <div class="content">
+          <div class="summary">
+            <div class="stat">
+              <div class="big" id="weekScore">-</div>
+              <div class="small">This week (Mon-Sun)</div>
+            </div>
+            <div class="stat">
+              <div class="big" id="rollScore">-</div>
+              <div class="small">Rolling 28-day average</div>
+            </div>
+          </div>
+
+          <div class="note">
+            Missing day = amber. No resets.
+          </div>
+
+          <div style="height:12px"></div>
+
+          <div class="history" id="history"></div>
+
+          <div class="foot">
+            <input id="dataBox" class="mono" placeholder="Paste JSON here to import (then press Import)" />
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  // ---------- Config ----------
+  const KEYS = [
+    { id:"delegate", title:"Delegation", desc:"Delegated >=1 decision" },
+    { id:"stop21", title:"Work boundary", desc:"Stopped work by 21:00" },
+    { id:"kids30", title:"Fatherhood", desc:">=30 min device-free with kids" },
+    { id:"output", title:"Output", desc:"Produced something tangible" },
+    { id:"review", title:"System", desc:"Weekly review done (Sun only)" },
+  ];
+
+  const STORAGE_KEY = "max_daily_score_v1";
+  const TZ = "Europe/Tallinn";
+
+  // ---------- Utilities ----------
+  function fmtDate(d){
+    // YYYY-MM-DD in Tallinn time
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year:"numeric", month:"2-digit", day:"2-digit" }).formatToParts(d);
+    const y = parts.find(p=>p.type==="year").value;
+    const m = parts.find(p=>p.type==="month").value;
+    const da = parts.find(p=>p.type==="day").value;
+    return `${y}-${m}-${da}`;
+  }
+
+  function prettyDate(iso){
+    const [y,m,d] = iso.split("-").map(Number);
+    const dt = new Date(Date.UTC(y, m-1, d));
+    return new Intl.DateTimeFormat("en-GB", { timeZone: TZ, weekday:"short", day:"2-digit", month:"short", year:"numeric" }).format(dt);
+  }
+
+  function getTodayISO(){ return fmtDate(new Date()); }
+
+  function toast(msg){
+    const el = document.getElementById("toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    setTimeout(()=>el.classList.remove("show"), 1200);
+  }
+
+  function load(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return { days:{} };
+      const data = JSON.parse(raw);
+      if(!data || typeof data !== "object") return { days:{} };
+      if(!data.days) data.days = {};
+      return data;
+    }catch(e){
+      return { days:{} };
+    }
+  }
+
+  function save(data){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }
+
+  function ensureToday(data){
+    const iso = getTodayISO();
+    if(!data.days[iso]){
+      data.days[iso] = { ts: Date.now(), v: {} };
+    }
+    save(data);
+  }
+
+  function weekdayShortUTC(iso){
+    const [y,m,d] = iso.split("-").map(Number);
+    const dt = new Date(Date.UTC(y, m-1, d));
+    return new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday:"short" }).format(dt); // Mon..Sun
+  }
+
+  function isSunday(iso){
+    return weekdayShortUTC(iso) === "Sun";
+  }
+
+  function mondayOfWeek(iso){
+    const map = {Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6,Sun:7};
+    const w = map[weekdayShortUTC(iso)] ?? 1;
+    const diffDays = w - 1;
+    return isoAddDays(iso, -diffDays);
+  }
+
+  function isoAddDays(iso, n){
+    const [y,m,d] = iso.split("-").map(Number);
+    const dt = new Date(Date.UTC(y, m-1, d) + n*86400000);
+    return fmtDate(dt);
+  }
+
+  function dayScore(dayIso, entry){
+    const sunday = isSunday(dayIso);
+    let denom = sunday ? 5 : 4;
+    let num = 0;
+    for(const k of KEYS){
+      if(k.id === "review" && !sunday) continue;
+      const val = entry?.v?.[k.id];
+      if(val === true) num += 1;
+    }
+    return { num, denom };
+  }
+
+  function isComplete(dayIso, entry){
+    const sunday = isSunday(dayIso);
+    for(const k of KEYS){
+      if(k.id === "review" && !sunday) continue;
+      const v = entry?.v?.[k.id];
+      if(v !== true && v !== false) return false;
+    }
+    return true;
+  }
+
+  function weekScore(data, anyIso){
+    const start = mondayOfWeek(anyIso);
+    let totalNum = 0;
+    let totalDen = 0;
+    for(let i=0;i<7;i++){
+      const iso = isoAddDays(start, i);
+      const entry = data.days[iso];
+      if(!entry) continue;
+      const sc = dayScore(iso, entry);
+      totalNum += sc.num;
+      totalDen += sc.denom;
+    }
+    return { totalNum, totalDen, start };
+  }
+
+  function rolling28(data, endIso){
+    let sumPct = 0;
+    for(let i=27;i>=0;i--){
+      const iso = isoAddDays(endIso, -i);
+      const entry = data.days[iso] || { v:{} };
+      const sc = dayScore(iso, entry);
+      const pct = sc.denom ? sc.num / sc.denom : 0;
+      sumPct += pct;
+    }
+    return sumPct / 28;
+  }
+
+  // ---------- UI ----------
+  const kpiList = document.getElementById("kpiList");
+  const historyEl = document.getElementById("history");
+  const todayLine = document.getElementById("todayLine");
+
+  function renderKpis(data){
+    kpiList.innerHTML = "";
+    const today = getTodayISO();
+    const entry = data.days[today] || { v:{} };
+    todayLine.textContent = `${prettyDate(today)} - Tallinn time`;
+
+    for(const k of KEYS){
+      if(k.id === "review" && !isSunday(today)) continue;
+
+      const row = document.createElement("div");
+      row.className = "kpi";
+
+      const left = document.createElement("div");
+      left.className = "label";
+      left.innerHTML = `<div class="title">${k.title}</div><div class="desc">${k.desc}</div>`;
+
+      const toggle = document.createElement("div");
+      toggle.className = "toggle";
+
+      const yes = document.createElement("div");
+      yes.className = "pill";
+      yes.textContent = "YES";
+
+      const no = document.createElement("div");
+      no.className = "pill";
+      no.textContent = "NO";
+
+      const val = entry.v[k.id];
+      if(val === true){
+        yes.classList.add("good");
+        no.classList.add("off");
+      }else if(val === false){
+        no.classList.add("bad");
+        yes.classList.add("off");
+      }else{
+        yes.classList.add("off");
+        no.classList.add("off");
+      }
+
+      yes.addEventListener("click", () => {
+        const d = load();
+        ensureToday(d);
+        d.days[today].v[k.id] = true;
+        save(d);
+        renderAll(d);
+        toast("Saved");
+      });
+
+      no.addEventListener("click", () => {
+        const d = load();
+        ensureToday(d);
+        d.days[today].v[k.id] = false;
+        save(d);
+        renderAll(d);
+        toast("Saved");
+      });
+
+      toggle.appendChild(yes);
+      toggle.appendChild(no);
+
+      row.appendChild(left);
+      row.appendChild(toggle);
+      kpiList.appendChild(row);
+    }
+  }
+
+  function renderScores(data){
+    const today = getTodayISO();
+    const wk = weekScore(data, today);
+    const wkPct = wk.totalDen ? Math.round(100 * wk.totalNum / wk.totalDen) : 0;
+    document.getElementById("weekScore").textContent = `${wk.totalNum}/${wk.totalDen} (${wkPct}%)`;
+
+    const r = rolling28(data, today);
+    document.getElementById("rollScore").textContent = `${Math.round(r*100)}%`;
+  }
+
+  function renderHistory(data){
+    historyEl.innerHTML = "";
+    const today = getTodayISO();
+    const daysToShow = 14;
+
+    for(let i=0;i<daysToShow;i++){
+      const iso = isoAddDays(today, -i);
+      const entry = data.days[iso];
+      const exists = !!entry;
+      const complete = exists && isComplete(iso, entry);
+      const sc = dayScore(iso, entry || {v:{}});
+      const pct = sc.denom ? Math.round(100*sc.num/sc.denom) : 0;
+
+      const row = document.createElement("div");
+      row.className = "row";
+
+      const left = document.createElement("div");
+      left.className = "left";
+
+      let hint = "";
+      if(!exists) hint = "Missing (treated as 0%)";
+      else if(!complete) hint = "Incomplete";
+      else hint = `${sc.num}/${sc.denom} (${pct}%)`;
+
+      left.innerHTML = `<div class="d">${prettyDate(iso)}</div><div class="hint">${hint}</div>`;
+
+      const dots = document.createElement("div");
+      dots.className = "dots";
+
+      for(const k of KEYS){
+        if(k.id === "review" && !isSunday(iso)) continue;
+        const dot = document.createElement("div");
+        dot.className = "dot";
+
+        if(!exists){
+          dot.classList.add("miss");
+        }else{
+          const v = entry.v[k.id];
+          if(v === true) dot.classList.add("good");
+          else if(v === false) dot.classList.add("bad");
+          else dot.classList.add("miss");
+        }
+        dots.appendChild(dot);
+      }
+
+      row.appendChild(left);
+      row.appendChild(dots);
+      historyEl.appendChild(row);
+    }
+  }
+
+  function renderAll(data){
+    renderKpis(data);
+    renderScores(data);
+    renderHistory(data);
+  }
+
+  // ---------- Export / Import / Reset ----------
+  document.getElementById("exportBtn").addEventListener("click", async () => {
+    const data = load();
+    const json = JSON.stringify(data);
+    document.getElementById("dataBox").value = json;
+    try{
+      if(navigator.clipboard) await navigator.clipboard.writeText(json);
+      toast("Copied JSON");
+    }catch(e){
+      toast("Exported");
+    }
+  });
+
+  document.getElementById("importBtn").addEventListener("click", () => {
+    const box = document.getElementById("dataBox");
+    const txt = box.value.trim();
+    if(!txt) { toast("Paste JSON first"); return; }
+    try{
+      const parsed = JSON.parse(txt);
+      if(!parsed || typeof parsed !== "object" || !parsed.days) throw new Error("Bad format");
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+      const d = load();
+      ensureToday(d);
+      renderAll(d);
+      toast("Imported");
+    }catch(e){
+      toast("Import failed");
+    }
+  });
+
+  document.getElementById("resetBtn").addEventListener("click", () => {
+    const ok = confirm("This clears all data. Continue?");
+    if(!ok) return;
+    localStorage.removeItem(STORAGE_KEY);
+    const d = load();
+    ensureToday(d);
+    renderAll(d);
+    toast("Reset");
+  });
+
+  // ---------- Service worker ----------
+  if("serviceWorker" in navigator){
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js").catch(()=>{});
+    });
+  }
+
+  // ---------- Boot ----------
+  const data = load();
+  ensureToday(data);
+  renderAll(data);
+})();
+</script>
+</body>
+</html>
