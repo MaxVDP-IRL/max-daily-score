@@ -1,8 +1,9 @@
 // Simple offline-first service worker for GitHub Pages
-const CACHE_NAME = "max-daily-score-v1";
+const CACHE_NAME = "max-daily-score-v2";
 const ASSETS = [
   "./",
   "./index.html",
+  "./logic.js",
   "./manifest.webmanifest",
   "./sw.js",
   "./icons/icon-192.png",
