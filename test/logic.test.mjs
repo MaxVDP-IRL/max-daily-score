@@ -2,9 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   STORAGE_KEY,
+  LIISU_STORAGE_KEY,
   GOAL_V2_FROM,
+  GOAL_V3_FROM,
   GOALS_V1,
   GOALS_V2,
+  GOALS_V3,
+  LIISU_GOALS,
+  maxTracker,
+  liisuTracker,
   tallinnISO,
   isoAddDays,
   mondayOfWeek,
@@ -22,6 +28,13 @@ const ids = (iso) => activeGoals(iso).map((goal) => goal.id);
 
 test("storage key stays max_daily_score_v1", () => {
   assert.equal(STORAGE_KEY, "max_daily_score_v1");
+  assert.equal(maxTracker.storageKey, "max_daily_score_v1");
+});
+
+test("Liisu uses her own storage key", () => {
+  assert.equal(LIISU_STORAGE_KEY, "liisu_daily_score_v1");
+  assert.equal(liisuTracker.storageKey, "liisu_daily_score_v1");
+  assert.notEqual(liisuTracker.storageKey, maxTracker.storageKey);
 });
 
 test("Tallinn date rolls at local midnight, including winter time", () => {
@@ -43,25 +56,51 @@ test("date arithmetic stays on the calendar across month ends and the DST weeken
 
 test("goal set switches on the ship date and does not reuse retired ids", () => {
   assert.equal(GOAL_V2_FROM, "2026-10-21");
+  assert.equal(GOAL_V3_FROM, "2026-10-24");
   assert.equal(goalSetIdFor("2026-10-20"), "v1");
   assert.equal(goalSetIdFor("2026-10-21"), "v2");
-  assert.equal(goalSetIdFor("2026-12-31"), "v2");
+  assert.equal(goalSetIdFor("2026-10-23"), "v2");
+  assert.equal(goalSetIdFor("2026-10-24"), "v3");
+  assert.equal(goalSetIdFor("2026-12-31"), "v3");
 
   assert.deepEqual(ids("2026-10-18"), ["delegate", "stop21", "kids30", "output", "review"]);
   assert.deepEqual(ids("2026-10-20"), ["delegate", "stop21", "kids30", "output"]);
   assert.deepEqual(ids("2026-10-21"), ["project", "stop21", "kids30", "noshort", "exercise", "bedtime"]);
-  assert.deepEqual(ids("2026-10-25"), ["project", "stop21", "kids30", "noshort", "exercise", "bedtime"]);
+  assert.deepEqual(ids("2026-10-23"), ["project", "stop21", "kids30", "noshort", "exercise", "bedtime"]);
+  assert.deepEqual(ids("2026-10-24"), [
+    "project", "stop21", "kids30", "noshort", "exercise", "bedtime",
+    "food", "nosugar", "nopickup",
+  ]);
+  assert.deepEqual(ids("2026-10-25"), ids("2026-10-24"));
+  assert.equal(ids("2026-10-23").includes("food"), false);
+  assert.equal(ids("2026-10-23").includes("nosugar"), false);
+  assert.equal(ids("2026-10-23").includes("nopickup"), false);
   assert.equal(ids("2026-10-20").includes("bedtime"), false);
+  assert.equal(ids("2026-10-25").includes("review"), false);
 
   for (const retired of ["delegate", "output", "review"]) {
     assert.equal(GOALS_V2.some((goal) => goal.id === retired), false);
+    assert.equal(GOALS_V3.some((goal) => goal.id === retired), false);
   }
   for (const kept of ["stop21", "kids30"]) {
     const before = GOALS_V1.find((goal) => goal.id === kept);
     const after = GOALS_V2.find((goal) => goal.id === kept);
+    const current = GOALS_V3.find((goal) => goal.id === kept);
     assert.equal(after.title, before.title);
     assert.equal(after.desc, before.desc);
+    assert.equal(current.title, before.title);
+    assert.equal(current.desc, before.desc);
   }
+  for (const goal of GOALS_V2) {
+    const current = GOALS_V3.find((item) => item.id === goal.id);
+    assert.ok(current);
+    assert.equal(current.title, goal.title);
+    assert.equal(current.desc, goal.desc);
+  }
+  assert.deepEqual(
+    GOALS_V3.slice(GOALS_V2.length).map((goal) => goal.title),
+    ["Good food choice", "No free sugar", "No unnecessary phone pickup"],
+  );
 });
 
 test("historical days keep the original score, including Sunday review", () => {
@@ -98,7 +137,9 @@ test("days from the cutover onward score the new set and ignore retired ticks", 
   };
   assert.deepEqual(dayScore("2026-10-21", entry), { num: 4, denom: 6 });
   assert.equal(isComplete("2026-10-21", entry), true);
-  assert.deepEqual(dayScore("2026-10-25", entry), { num: 4, denom: 6 });
+  assert.deepEqual(dayScore("2026-10-23", entry), { num: 4, denom: 6 });
+  // The three goals added on the 24th are unset here, so they do not add points.
+  assert.deepEqual(dayScore("2026-10-24", entry), { num: 4, denom: 9 });
   assert.equal(isComplete("2026-10-25", { v: { project: true } }), false);
 });
 
@@ -197,4 +238,115 @@ test("logging a past day updates that entry and the week, and refuses the future
   assert.equal(withBed.data.days["2026-10-21"].v.delegate, true);
   assert.deepEqual(dayScore("2026-10-21", withBed.data.days["2026-10-21"]), { num: 2, denom: 6 });
   assert.equal(applyGoal(legacyOnCutover, "2026-10-21", "review", true, today, 12).ok, false);
+});
+
+test("goals added on 2026-10-24 do not score or save on earlier days", () => {
+  const stuffed = {
+    ts: 1,
+    v: {
+      project: true,
+      stop21: true,
+      kids30: true,
+      noshort: true,
+      exercise: true,
+      bedtime: true,
+      food: true,
+      nosugar: true,
+      nopickup: true,
+    },
+  };
+  assert.deepEqual(dayScore("2026-10-23", stuffed), { num: 6, denom: 6 });
+  assert.equal(isComplete("2026-10-23", stuffed), true);
+  assert.deepEqual(dayScore("2026-10-24", stuffed), { num: 9, denom: 9 });
+  assert.equal(isComplete("2026-10-24", stuffed), true);
+  assert.equal(isComplete("2026-10-24", {
+    v: { project: true, stop21: true, kids30: true, noshort: true, exercise: true, bedtime: true },
+  }), false);
+
+  const today = "2026-10-24";
+  assert.equal(applyGoal({ days: {} }, "2026-10-23", "food", true, today, 1).ok, false);
+  assert.equal(applyGoal({ days: {} }, "2026-10-23", "nosugar", false, today, 1).ok, false);
+  assert.equal(applyGoal({ days: {} }, "2026-10-23", "nopickup", true, today, 1).ok, false);
+  const saved = applyGoal({ days: {} }, "2026-10-23", "bedtime", true, today, 2);
+  assert.equal(saved.ok, true);
+  assert.deepEqual(saved.data.days["2026-10-23"].v, { bedtime: true });
+
+  const added = applyGoal(saved.data, today, "nopickup", true, today, 3);
+  assert.equal(added.ok, true);
+  assert.equal(added.data.days[today].v.nopickup, true);
+  assert.deepEqual(added.data.days["2026-10-23"].v, { bedtime: true });
+  assert.deepEqual(dayScore(today, added.data.days[today]), { num: 1, denom: 9 });
+});
+
+test("a week crossing 2026-10-24 sums six-goal and nine-goal days separately", () => {
+  const fill = (iso) => {
+    const v = {};
+    for (const goal of activeGoals(iso)) v[goal.id] = true;
+    return { ts: 1, v };
+  };
+  const data = {
+    days: {
+      "2026-10-23": fill("2026-10-23"),
+      "2026-10-24": fill("2026-10-24"),
+    },
+  };
+  const week = weekScore(data, "2026-10-24");
+  assert.equal(week.start, "2026-10-19");
+  assert.equal(week.totalNum, 6 + 9);
+  assert.equal(week.totalDen, 6 + 9);
+});
+
+test("Liisu scores only her five goals on every date", () => {
+  const titles = [
+    "Caught negative thought",
+    "20 min walk",
+    "Good food choice",
+    "Acknowledged positive kid thing",
+    "Told kids a positive thing",
+  ];
+  assert.deepEqual(LIISU_GOALS.map((goal) => goal.title), titles);
+  assert.deepEqual(LIISU_GOALS.map((goal) => goal.id), ["thought", "walk", "food", "kidpos", "toldkids"]);
+  for (const goal of LIISU_GOALS) assert.equal(typeof goal.desc, "string");
+
+  for (const iso of ["2020-01-05", "2026-10-18", "2026-10-23", "2026-10-24", "2026-12-31"]) {
+    assert.deepEqual(liisuTracker.activeGoals(iso).map((goal) => goal.title), titles);
+    assert.equal(liisuTracker.activeGoals(iso).length, 5);
+  }
+
+  const mixed = {
+    v: {
+      project: true,
+      bedtime: true,
+      thought: true,
+      walk: false,
+      food: true,
+      kidpos: true,
+      toldkids: false,
+    },
+  };
+  assert.deepEqual(liisuTracker.dayScore("2026-10-24", mixed), { num: 3, denom: 5 });
+  assert.equal(liisuTracker.isComplete("2026-10-24", mixed), true);
+  // Max's nine-goal day ignores Liisu-only ticks. Shared id "food" still counts for him.
+  assert.deepEqual(dayScore("2026-10-24", mixed), { num: 3, denom: 9 });
+
+  const today = "2026-10-24";
+  assert.equal(liisuTracker.applyGoal({ days: {} }, "2026-10-25", "walk", true, today, 1).ok, false);
+  assert.equal(liisuTracker.applyGoal({ days: {} }, today, "project", true, today, 1).ok, false);
+  assert.equal(liisuTracker.applyGoal({ days: {} }, today, "bedtime", true, today, 1).ok, false);
+
+  let saved = liisuTracker.applyGoal({ days: {} }, "2020-01-01", "walk", true, today, 4);
+  assert.equal(saved.ok, true);
+  saved = liisuTracker.applyGoal(saved.data, "2026-10-21", "thought", true, today, 5);
+  saved = liisuTracker.applyGoal(saved.data, "2026-10-21", "walk", true, today, 5);
+  saved = liisuTracker.applyGoal(saved.data, "2026-10-21", "food", false, today, 5);
+  saved = liisuTracker.applyGoal(saved.data, "2026-10-21", "kidpos", true, today, 5);
+  saved = liisuTracker.applyGoal(saved.data, "2026-10-21", "toldkids", true, today, 5);
+  assert.deepEqual(liisuTracker.dayScore("2026-10-21", saved.data.days["2026-10-21"]), { num: 4, denom: 5 });
+  assert.equal(liisuTracker.isComplete("2026-10-21", saved.data.days["2026-10-21"]), true);
+  assert.deepEqual(liisuTracker.weekScore(saved.data, today), { totalNum: 4, totalDen: 5, start: "2026-10-19" });
+  assert.equal(liisuTracker.rolling28({ days: {} }, today), 0);
+
+  const perfect = {};
+  for (const goal of liisuTracker.activeGoals(today)) perfect[goal.id] = true;
+  assert.equal(liisuTracker.rolling28({ days: { [today]: { ts: 1, v: perfect } } }, today), 1 / 28);
 });
