@@ -4,5 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "node --test"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^25.16.0"
   }
 }

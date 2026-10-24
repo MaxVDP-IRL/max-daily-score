@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0b0c" />
+  <title>Liisu - Daily Score</title>
+
+  <!-- PWA meta. Scope stays inside /liisu/ so this install does not take Max's pages. -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Liisu - Daily Score" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="stylesheet" href="../styles.css?v=3" />
+</head>
+
+<body>
+  <header>
+    <div class="wrap">
+      <div class="top">
+        <div>
+          <h1>Daily Score</h1>
+          <div class="date" id="todayLine"></div>
+        </div>
+        <div class="actions">
+          <button id="exportBtn" class="mono" title="Export JSON">Export</button>
+          <button id="importBtn" class="mono" title="Import JSON">Import</button>
+          <button id="resetBtn" class="btn-danger mono" title="Danger: clears all data">Reset</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="grid">
+      <section class="card">
+        <h2 id="logHeading">Today (tap fast, close app)</h2>
+        <div class="content">
+          <div class="day-nav" id="dayNav"></div>
+          <div class="kpis" id="kpiList"></div>
+          <div class="note" id="dayNote">
+            Inputs are binary. No journaling. Save happens instantly.
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Scoreboard</h2>
+        <div class="content">
+          <div class="summary">
+            <div class="stat">
+              <div class="big" id="weekScore">-</div>
+              <div class="small">This week (Mon-Sun)</div>
+            </div>
+            <div class="stat">
+              <div class="big" id="rollScore">-</div>
+              <div class="small">Rolling 28-day average</div>
+            </div>
+          </div>
+
+          <div class="note">
+            Missing day = amber. No resets.
+          </div>
+
+          <div style="height:12px"></div>
+
+          <div class="history" id="history"></div>
+
+          <div class="foot">
+            <input id="dataBox" class="mono" placeholder="Paste JSON here to import (then press Import)" />
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+// Classic script, not a module. Registration must run even if a stale cached
+// logic.js breaks the module graph. ./sw.js is this directory's worker.
+if("serviceWorker" in navigator){
+  if(navigator.serviceWorker.controller){
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      window.location.reload();
+    });
+  }
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
+}
+</script>
+<script type="module">
+import { startApp } from "../app.js?v=3";
+import { liisuTracker } from "../logic.js?v=3";
+startApp(liisuTracker);
+</script>
+</body>
+</html>
