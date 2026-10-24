@@ -1,6 +1,10 @@
 // Offline cache for Liisu's app. Default scope is /liisu/, which is more
 // specific than Max's root worker, so the two registrations do not share clients.
 // Only caches named liisu-daily-score-* are deleted here.
+//
+// SHARED PRECACHE: app.js, logic.js, and styles.css are cached here and in
+// ../sw.js. If you change one of those files, bump ?v= everywhere it is
+// referenced and bump BOTH cache names.
 const CACHE_NAME = "liisu-daily-score-v1";
 const CACHE_PREFIX = "liisu-daily-score-";
 const ASSETS = [
@@ -10,9 +14,9 @@ const ASSETS = [
   "./sw.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
-  "../styles.css",
-  "../app.js",
-  "../logic.js"
+  "../styles.css?v=3",
+  "../app.js?v=3",
+  "../logic.js?v=3"
 ];
 
 self.addEventListener("install", (event) => {

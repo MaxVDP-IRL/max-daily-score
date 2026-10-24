@@ -1,14 +1,18 @@
 // Offline cache for Max's app. Scope is the site root (this file's directory).
 // Liisu's worker lives at ./liisu/sw.js and owns the /liisu/ scope. Cache names
 // are prefixed so one app's activate step cannot delete the other's cache.
+//
+// SHARED PRECACHE: app.js, logic.js, and styles.css are cached here and in
+// liisu/sw.js. If you change one of those files, bump ?v= everywhere it is
+// referenced and bump BOTH cache names.
 const CACHE_NAME = "max-daily-score-v3";
 const CACHE_PREFIX = "max-daily-score-";
 const ASSETS = [
   "./",
   "./index.html",
-  "./app.js",
-  "./logic.js",
-  "./styles.css",
+  "./app.js?v=3",
+  "./logic.js?v=3",
+  "./styles.css?v=3",
   "./manifest.webmanifest",
   "./sw.js",
   "./icons/icon-192.png",
@@ -36,8 +40,9 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
-  // Pages under /liisu/ belong to Liisu's worker. Do not answer them, and do
-  // not store her documents in this cache.
+  // The installed v2 worker stored every navigation, including /liisu/, under
+  // ./index.html. Ignore those requests here. activate deletes max-daily-score-v2,
+  // so a poisoned index entry does not survive this worker taking control.
   if (url.origin === self.location.origin && isLiisuPath(url.pathname)) return;
 
   // Network-first for navigations so updates propagate, with cache fallback.

@@ -13,7 +13,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=3" />
 </head>
 
 <body>
@@ -78,9 +78,23 @@
 
   <div class="toast" id="toast"></div>
 
+<script>
+// Classic script, not a module. The installed v2 worker can leave this page
+// unable to evaluate its modules; registration still has to run.
+if("serviceWorker" in navigator){
+  if(navigator.serviceWorker.controller){
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      window.location.reload();
+    });
+  }
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
+}
+</script>
 <script type="module">
-import { startApp } from "./app.js";
-import { maxTracker } from "./logic.js";
+import { startApp } from "./app.js?v=3";
+import { maxTracker } from "./logic.js?v=3";
 startApp(maxTracker);
 </script>
 </body>

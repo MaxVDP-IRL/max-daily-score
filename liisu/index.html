@@ -14,7 +14,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Liisu - Daily Score" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="../styles.css?v=3" />
 </head>
 
 <body>
@@ -79,9 +79,23 @@
 
   <div class="toast" id="toast"></div>
 
+<script>
+// Classic script, not a module. Registration must run even if a stale cached
+// logic.js breaks the module graph. ./sw.js is this directory's worker.
+if("serviceWorker" in navigator){
+  if(navigator.serviceWorker.controller){
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      window.location.reload();
+    });
+  }
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
+}
+</script>
 <script type="module">
-import { startApp } from "../app.js";
-import { liisuTracker } from "../logic.js";
+import { startApp } from "../app.js?v=3";
+import { liisuTracker } from "../logic.js?v=3";
 startApp(liisuTracker);
 </script>
 </body>

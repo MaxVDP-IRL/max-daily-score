@@ -1,13 +1,14 @@
 // Shared screen for Max and Liisu. The page picks the tracker; this file
 // never chooses a storage key or a goal set on its own.
 
+// The ?v= query misses the installed v2 cache. Bare ./logic.js there has no maxTracker.
 import {
   tallinnISO,
   prettyDate,
   isoAddDays,
   daysBefore,
   canLogDate,
-} from "./logic.js";
+} from "./logic.js?v=3";
 
 export function startApp(tracker){
   if(!tracker || typeof tracker.storageKey !== "string" || typeof tracker.activeGoals !== "function"){
@@ -321,17 +322,6 @@ export function startApp(tracker){
     ensureToday(data);
     renderAll(data);
   });
-
-  if("serviceWorker" in navigator){
-    if(navigator.serviceWorker.controller){
-      navigator.serviceWorker.addEventListener("controllerchange", () => {
-        window.location.reload();
-      });
-    }
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./sw.js").catch(() => {});
-    });
-  }
 
   const data = load();
   ensureToday(data);
