@@ -44,13 +44,24 @@ export const GOALS_V3 = freezeGoals([
   { id: "nopickup", title: "No unnecessary phone pickup", desc: "No unnecessary phone pickup" },
 ]);
 
-// One set on every date. She has no earlier history to preserve.
+// Tallinn calendar day Liisu's sixth goal ships. She has logged the five-goal
+// set since 2026-10-24. Dates before this keep that set, including when she
+// edits them later.
+// v1: before 2026-10-26, the five goals
+// v2: 2026-10-26 onward, those five plus Orange light
+export const LIISU_GOAL_V2_FROM = "2026-10-26";
+
 export const LIISU_GOALS = freezeGoals([
   { id: "thought", title: "Caught negative thought", desc: "Noticed a negative thought" },
   { id: "walk", title: "20 min walk", desc: "Walked for 20 minutes" },
   { id: "food", title: "Good food choice", desc: "Made a good food choice" },
   { id: "kidpos", title: "Acknowledged positive kid thing", desc: "Acknowledged a positive thing a kid did" },
   { id: "toldkids", title: "Told kids a positive thing", desc: "Told the kids something positive" },
+]);
+
+export const LIISU_GOALS_V2 = freezeGoals([
+  ...LIISU_GOALS,
+  { id: "orange", title: "Orange light", desc: "Orange light" },
 ]);
 
 const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -257,6 +268,7 @@ export const maxTracker = Object.freeze({
 
 const liisuApi = createTracker([
   { id: "v1", from: "0000-00-00", goals: LIISU_GOALS },
+  { id: "v2", from: LIISU_GOAL_V2_FROM, goals: LIISU_GOALS_V2 },
 ]);
 
 export const liisuTracker = Object.freeze({

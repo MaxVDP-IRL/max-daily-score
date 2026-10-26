@@ -6,7 +6,14 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync
 import { tmpdir } from "node:os";
 import { dirname, join, extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { activeGoals, tallinnISO } from "../logic.js";
+import { activeGoals, daysBefore, isoAddDays, LIISU_GOAL_V2_FROM, liisuTracker, tallinnISO } from "../logic.js";
+
+// Pin these. `main` moves when a release merges, and the upgrade check has to
+// keep booting the worker that was actually installed.
+// v2 cached bare logic.js, which does not export maxTracker.
+const V2_COMMIT = "4130fd5";
+// Phones on the current release: Max cache v3, Liisu cache v1, shared ?v=3.
+const INSTALLED_COMMIT = "1251c0e";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TYPES = {
@@ -34,15 +41,46 @@ function gitShow(spec) {
   return result.stdout;
 }
 
-function writeOldSite(dir) {
-  mkdirSync(join(dir, "icons"), { recursive: true });
-  writeFileSync(join(dir, "index.html"), gitShow("main:index.html"));
-  writeFileSync(join(dir, "logic.js"), gitShow("main:logic.js"));
-  writeFileSync(join(dir, "sw.js"), gitShow("main:sw.js"));
-  writeFileSync(join(dir, "manifest.webmanifest"), gitShow("main:manifest.webmanifest"));
-  for (const icon of ["icon-192.png", "icon-512.png"]) {
-    writeFileSync(join(dir, "icons", icon), readFileSync(join(root, "icons", icon)));
+function writeRepoFiles(dir, rev, files) {
+  for (const file of files) {
+    const dest = join(dir, file);
+    mkdirSync(dirname(dest), { recursive: true });
+    writeFileSync(dest, gitShow(`${rev}:${file}`));
   }
+}
+
+function copyIcons(dir, iconDir) {
+  mkdirSync(join(dir, iconDir), { recursive: true });
+  for (const icon of ["icon-192.png", "icon-512.png"]) {
+    writeFileSync(join(dir, iconDir, icon), readFileSync(join(root, iconDir, icon)));
+  }
+}
+
+function writeOldSite(dir) {
+  writeRepoFiles(dir, V2_COMMIT, ["index.html", "logic.js", "sw.js", "manifest.webmanifest"]);
+  copyIcons(dir, "icons");
+}
+
+function writeInstalledSite(dir) {
+  writeRepoFiles(dir, INSTALLED_COMMIT, [
+    "index.html",
+    "app.js",
+    "logic.js",
+    "styles.css",
+    "sw.js",
+    "manifest.webmanifest",
+    "liisu/index.html",
+    "liisu/sw.js",
+    "liisu/manifest.webmanifest",
+  ]);
+  copyIcons(dir, "icons");
+  copyIcons(dir, "liisu/icons");
+}
+
+function logicRev(swSource) {
+  const match = swSource.match(/logic\.js\?v=(\d+)/);
+  if (!match) return "";
+  return match[1];
 }
 
 function startServer(oldDir) {
@@ -56,7 +94,7 @@ function startServer(oldDir) {
     const relPath = rel.replace(/^\/+/, "");
     const fileName = relPath.split("/").pop();
     // Keep serving the installed v2 worker after the rest of the site is new.
-    const forceOldWorker = mode === "new" && relPath === "sw.js";
+    const forceOldWorker = mode === "new" && (relPath === "sw.js" || relPath === "liisu/sw.js");
     const base = resolve(mode === "old" || forceOldWorker ? oldDir : root);
     const filePath = resolve(base, relPath);
     if (filePath !== base && !filePath.startsWith(base + sep)) {
@@ -188,6 +226,213 @@ test("new index renders against a v2 cache that still holds the old logic.js", {
     assert.equal(viewed.stored.days["2026-10-20"].v.delegate, true);
     assert.ok(server.requests.some((url) => url.startsWith("/logic.js?v=")));
     assert.ok(server.requests.some((url) => url.startsWith("/app.js?v=")));
+  } finally {
+    await browser.close();
+    await server.close();
+    rmSync(oldDir, { recursive: true, force: true });
+  }
+});
+
+async function launchChrome(t) {
+  const chrome = chromePath();
+  if (!chrome) {
+    t.skip("Chrome is not installed");
+    return null;
+  }
+  let puppeteer;
+  try {
+    ({ default: puppeteer } = await import("puppeteer-core"));
+  } catch {
+    t.skip("puppeteer-core is not installed");
+    return null;
+  }
+  return puppeteer.launch({
+    executablePath: chrome,
+    headless: "new",
+    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+  });
+}
+
+async function waitForController(page, server) {
+  try {
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null, { timeout: 15000 });
+  } catch (err) {
+    err.message += `\nrequests: ${server.requests.join("\n")}`;
+    throw err;
+  }
+}
+
+test("installed v3 worker renders the new page from ?v=4 modules", { timeout: 60000 }, async (t) => {
+  const browser = await launchChrome(t);
+  if (!browser) return;
+
+  const oldDir = mkdtempSync(join(tmpdir(), "score-v3-"));
+  writeInstalledSite(oldDir);
+  const oldSw = readFileSync(join(oldDir, "sw.js"), "utf8");
+  const oldLogic = readFileSync(join(oldDir, "logic.js"), "utf8");
+  assert.match(oldSw, /const CACHE_NAME = "max-daily-score-v3"/);
+  assert.equal(logicRev(oldSw), "3");
+  assert.equal(oldLogic.includes("maxTracker"), true);
+  assert.equal(oldLogic.includes("Orange light"), false);
+
+  const server = await startServer(oldDir);
+  const errors = [];
+  try {
+    const page = await browser.newPage();
+    page.on("pageerror", (err) => errors.push(String(err)));
+    page.on("console", (msg) => {
+      if (msg.type() === "error" && !msg.text().includes("favicon")) errors.push(msg.text());
+    });
+    await page.goto(server.origin + "/", { waitUntil: "networkidle0" });
+    await waitForController(page, server);
+
+    const seeded = await page.evaluate(async () => {
+      const cache = await caches.open("max-daily-score-v3");
+      const keys = await cache.keys();
+      const logicKey = keys.find((key) => new URL(key.url).pathname.endsWith("/logic.js"));
+      const logic = logicKey ? await (await cache.match(logicKey)).text() : "";
+      return {
+        cacheNames: await caches.keys(),
+        logicSearch: logicKey ? new URL(logicKey.url).search : "",
+        logicHasOrange: logic.includes("Orange light"),
+      };
+    });
+    assert.ok(seeded.cacheNames.includes("max-daily-score-v3"));
+    assert.equal(seeded.logicSearch, "?v=3");
+    assert.equal(seeded.logicHasOrange, false);
+
+    server.setMode("new");
+    const marked = server.requests.length;
+    errors.length = 0;
+    await page.reload({ waitUntil: "networkidle0" });
+    await page.waitForSelector(".kpi .title", { timeout: 10000 });
+    const viewed = await page.evaluate(async () => ({
+      titles: [...document.querySelectorAll(".kpi .title")].map((el) => el.textContent),
+      label: document.querySelector("#day-label").innerText,
+      cacheNames: await caches.keys(),
+    }));
+    const fresh = server.requests.slice(marked);
+    assert.deepEqual(errors, []);
+    assert.equal(viewed.label.startsWith("Today"), true);
+    assert.deepEqual(viewed.titles, activeGoals(tallinnISO()).map((goal) => goal.title));
+    assert.equal(viewed.titles.includes("Orange light"), false);
+    assert.ok(viewed.cacheNames.includes("max-daily-score-v3"));
+    assert.ok(fresh.some((url) => url.startsWith("/logic.js?v=") && !url.startsWith("/logic.js?v=3")));
+    assert.ok(fresh.some((url) => url.startsWith("/app.js?v=") && !url.startsWith("/app.js?v=3")));
+  } finally {
+    await browser.close();
+    await server.close();
+    rmSync(oldDir, { recursive: true, force: true });
+  }
+});
+
+test("installed Liisu worker renders six goals today and five on earlier days", { timeout: 60000 }, async (t) => {
+  const browser = await launchChrome(t);
+  if (!browser) return;
+
+  const oldDir = mkdtempSync(join(tmpdir(), "score-liisu-"));
+  writeInstalledSite(oldDir);
+  const oldSw = readFileSync(join(oldDir, "liisu/sw.js"), "utf8");
+  const oldLogic = readFileSync(join(oldDir, "logic.js"), "utf8");
+  assert.match(oldSw, /const CACHE_NAME = "liisu-daily-score-v1"/);
+  assert.equal(logicRev(oldSw), "3");
+  assert.equal(oldLogic.includes("Orange light"), false);
+
+  const server = await startServer(oldDir);
+  const errors = [];
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
+    page.on("pageerror", (err) => errors.push(String(err)));
+    page.on("console", (msg) => {
+      if (msg.type() === "error" && !msg.text().includes("favicon")) errors.push(msg.text());
+    });
+    await page.goto(server.origin + "/liisu/", { waitUntil: "networkidle0" });
+    await waitForController(page, server);
+
+    const seeded = await page.evaluate(async () => {
+      const cache = await caches.open("liisu-daily-score-v1");
+      const keys = await cache.keys();
+      const logicKey = keys.find((key) => new URL(key.url).pathname.endsWith("/logic.js"));
+      const logic = logicKey ? await (await cache.match(logicKey)).text() : "";
+      return {
+        cacheNames: await caches.keys(),
+        logicSearch: logicKey ? new URL(logicKey.url).search : "",
+        logicHasOrange: logic.includes("Orange light"),
+        controller: navigator.serviceWorker.controller.scriptURL,
+      };
+    });
+    assert.deepEqual(seeded.cacheNames, ["liisu-daily-score-v1"]);
+    assert.equal(seeded.logicSearch, "?v=3");
+    assert.equal(seeded.logicHasOrange, false);
+    assert.equal(seeded.controller.endsWith("/liisu/sw.js"), true);
+
+    server.setMode("new");
+    const marked = server.requests.length;
+    errors.length = 0;
+    await page.reload({ waitUntil: "networkidle0" });
+    await page.waitForSelector(".kpi .title", { timeout: 10000 });
+
+    const today = tallinnISO();
+    const todayGoals = liisuTracker.activeGoals(today).map((goal) => goal.title);
+    const viewed = await page.evaluate(() => ({
+      titles: [...document.querySelectorAll(".kpi .title")].map((el) => el.textContent),
+      note: document.getElementById("dayNote").textContent,
+      label: document.querySelector("#day-label").innerText,
+      dots: [...document.querySelectorAll("#history .row")].map((row) => row.querySelectorAll(".dot").length),
+    }));
+    const fresh = server.requests.slice(marked);
+    assert.deepEqual(errors, []);
+    assert.equal(viewed.label.startsWith("Today"), true);
+    assert.deepEqual(viewed.titles, todayGoals);
+    assert.match(viewed.note, new RegExp(`This day 0/${todayGoals.length}`));
+    const expectedDots = [];
+    for (let i = 0; i < 14; i++) expectedDots.push(liisuTracker.activeGoals(isoAddDays(today, -i)).length);
+    assert.deepEqual(viewed.dots, expectedDots);
+    assert.ok(fresh.some((url) => url.startsWith("/logic.js?v=") && !url.startsWith("/logic.js?v=3")));
+    assert.ok(fresh.some((url) => url.startsWith("/app.js?v=") && !url.startsWith("/app.js?v=3")));
+
+    const before = isoAddDays(LIISU_GOAL_V2_FROM, -1);
+    if (before <= today) {
+      const steps = daysBefore(before, today);
+      await page.evaluate((n) => {
+        for (let i = 0; i < n; i++) document.getElementById("day-prev").click();
+      }, steps);
+      const earlierGoals = liisuTracker.activeGoals(before).map((goal) => goal.title);
+      const earlier = await page.evaluate(() => ({
+        titles: [...document.querySelectorAll(".kpi .title")].map((el) => el.textContent),
+        note: document.getElementById("dayNote").textContent,
+      }));
+      assert.deepEqual(earlier.titles, earlierGoals);
+      assert.equal(earlier.titles.includes("Orange light"), false);
+      assert.match(earlier.note, new RegExp(`This day 0/${earlierGoals.length}`));
+
+      await page.click(".kpi .pill");
+      const logged = await page.evaluate((iso) => {
+        const data = JSON.parse(localStorage.getItem("liisu_daily_score_v1"));
+        return {
+          note: document.getElementById("dayNote").textContent,
+          day: data.days[iso],
+          maxKey: localStorage.getItem("max_daily_score_v1"),
+        };
+      }, before);
+      assert.match(logged.note, new RegExp(`This day 1/${earlierGoals.length}`));
+      assert.equal(logged.day.v[liisuTracker.activeGoals(before)[0].id], true);
+      assert.equal(logged.day.v.orange, undefined);
+      assert.equal(logged.maxKey, null);
+
+      if (steps > 0) {
+        await page.click("#day-label");
+        const back = await page.evaluate(() => ({
+          titles: [...document.querySelectorAll(".kpi .title")].map((el) => el.textContent),
+          note: document.getElementById("dayNote").textContent,
+          label: document.querySelector("#day-label").innerText,
+        }));
+        assert.equal(back.label.startsWith("Today"), true);
+        assert.deepEqual(back.titles, todayGoals);
+        assert.match(back.note, new RegExp(`This day 0/${todayGoals.length}`));
+      }
+    }
   } finally {
     await browser.close();
     await server.close();
