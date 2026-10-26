@@ -5,14 +5,14 @@
 // SHARED PRECACHE: app.js, logic.js, and styles.css are cached here and in
 // liisu/sw.js. If you change one of those files, bump ?v= everywhere it is
 // referenced and bump BOTH cache names.
-const CACHE_NAME = "max-daily-score-v3";
+const CACHE_NAME = "max-daily-score-v4";
 const CACHE_PREFIX = "max-daily-score-";
 const ASSETS = [
   "./",
   "./index.html",
-  "./app.js?v=3",
-  "./logic.js?v=3",
-  "./styles.css?v=3",
+  "./app.js?v=4",
+  "./logic.js?v=4",
+  "./styles.css?v=4",
   "./manifest.webmanifest",
   "./sw.js",
   "./icons/icon-192.png",

@@ -8,7 +8,7 @@ import {
   isoAddDays,
   daysBefore,
   canLogDate,
-} from "./logic.js?v=3";
+} from "./logic.js?v=4";
 
 export function startApp(tracker){
   if(!tracker || typeof tracker.storageKey !== "string" || typeof tracker.activeGoals !== "function"){
