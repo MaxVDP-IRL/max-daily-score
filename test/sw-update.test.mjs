@@ -12,8 +12,8 @@ import { activeGoals, daysBefore, isoAddDays, LIISU_GOAL_V2_FROM, liisuTracker, 
 // keep booting the worker that was actually installed.
 // v2 cached bare logic.js, which does not export maxTracker.
 const V2_COMMIT = "4130fd5";
-// Phones on the current release: Max cache v3, Liisu cache v1, shared ?v=3.
-const INSTALLED_COMMIT = "1251c0e";
+// Phones on the current release (PR #3): Max cache v4, Liisu cache v2, shared ?v=4.
+const INSTALLED_COMMIT = "b9c33eeb244116fad3027da76bcd54e445dc9028";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TYPES = {
@@ -264,18 +264,19 @@ async function waitForController(page, server) {
   }
 }
 
-test("installed v3 worker renders the new page from ?v=5 modules", { timeout: 60000 }, async (t) => {
+test("installed v4 worker renders the new page from ?v=5 modules", { timeout: 60000 }, async (t) => {
   const browser = await launchChrome(t);
   if (!browser) return;
 
-  const oldDir = mkdtempSync(join(tmpdir(), "score-v3-"));
+  const oldDir = mkdtempSync(join(tmpdir(), "score-v4-"));
   writeInstalledSite(oldDir);
   const oldSw = readFileSync(join(oldDir, "sw.js"), "utf8");
   const oldLogic = readFileSync(join(oldDir, "logic.js"), "utf8");
-  assert.match(oldSw, /const CACHE_NAME = "max-daily-score-v3"/);
-  assert.equal(logicRev(oldSw), "3");
+  assert.match(oldSw, /const CACHE_NAME = "max-daily-score-v4"/);
+  assert.equal(logicRev(oldSw), "4");
   assert.equal(oldLogic.includes("maxTracker"), true);
-  assert.equal(oldLogic.includes("Orange light"), false);
+  assert.equal(oldLogic.includes("Orange light"), true);
+  assert.equal(oldLogic.includes("2l of water"), false);
 
   const server = await startServer(oldDir);
   const errors = [];
@@ -289,7 +290,7 @@ test("installed v3 worker renders the new page from ?v=5 modules", { timeout: 60
     await waitForController(page, server);
 
     const seeded = await page.evaluate(async () => {
-      const cache = await caches.open("max-daily-score-v3");
+      const cache = await caches.open("max-daily-score-v4");
       const keys = await cache.keys();
       const logicKey = keys.find((key) => new URL(key.url).pathname.endsWith("/logic.js"));
       const logic = logicKey ? await (await cache.match(logicKey)).text() : "";
@@ -297,11 +298,13 @@ test("installed v3 worker renders the new page from ?v=5 modules", { timeout: 60
         cacheNames: await caches.keys(),
         logicSearch: logicKey ? new URL(logicKey.url).search : "",
         logicHasOrange: logic.includes("Orange light"),
+        logicHasWater: logic.includes("2l of water"),
       };
     });
-    assert.ok(seeded.cacheNames.includes("max-daily-score-v3"));
-    assert.equal(seeded.logicSearch, "?v=3");
-    assert.equal(seeded.logicHasOrange, false);
+    assert.ok(seeded.cacheNames.includes("max-daily-score-v4"));
+    assert.equal(seeded.logicSearch, "?v=4");
+    assert.equal(seeded.logicHasOrange, true);
+    assert.equal(seeded.logicHasWater, false);
 
     server.setMode("new");
     const marked = server.requests.length;
@@ -328,7 +331,7 @@ test("installed v3 worker renders the new page from ?v=5 modules", { timeout: 60
     const expectedDots = [];
     for (let i = 0; i < 14; i++) expectedDots.push(activeGoals(isoAddDays(today, -i)).length);
     assert.deepEqual(viewed.dots, expectedDots);
-    assert.ok(viewed.cacheNames.includes("max-daily-score-v3"));
+    assert.ok(viewed.cacheNames.includes("max-daily-score-v4"));
     assert.ok(fresh.some((url) => url.startsWith("/logic.js?v=5")));
     assert.ok(fresh.some((url) => url.startsWith("/app.js?v=5")));
 
@@ -380,9 +383,10 @@ test("installed Liisu worker renders six goals today and five on earlier days", 
   writeInstalledSite(oldDir);
   const oldSw = readFileSync(join(oldDir, "liisu/sw.js"), "utf8");
   const oldLogic = readFileSync(join(oldDir, "logic.js"), "utf8");
-  assert.match(oldSw, /const CACHE_NAME = "liisu-daily-score-v1"/);
-  assert.equal(logicRev(oldSw), "3");
-  assert.equal(oldLogic.includes("Orange light"), false);
+  assert.match(oldSw, /const CACHE_NAME = "liisu-daily-score-v2"/);
+  assert.equal(logicRev(oldSw), "4");
+  assert.equal(oldLogic.includes("Orange light"), true);
+  assert.equal(oldLogic.includes("2l of water"), false);
 
   const server = await startServer(oldDir);
   const errors = [];
@@ -397,7 +401,7 @@ test("installed Liisu worker renders six goals today and five on earlier days", 
     await waitForController(page, server);
 
     const seeded = await page.evaluate(async () => {
-      const cache = await caches.open("liisu-daily-score-v1");
+      const cache = await caches.open("liisu-daily-score-v2");
       const keys = await cache.keys();
       const logicKey = keys.find((key) => new URL(key.url).pathname.endsWith("/logic.js"));
       const logic = logicKey ? await (await cache.match(logicKey)).text() : "";
@@ -405,12 +409,14 @@ test("installed Liisu worker renders six goals today and five on earlier days", 
         cacheNames: await caches.keys(),
         logicSearch: logicKey ? new URL(logicKey.url).search : "",
         logicHasOrange: logic.includes("Orange light"),
+        logicHasWater: logic.includes("2l of water"),
         controller: navigator.serviceWorker.controller.scriptURL,
       };
     });
-    assert.deepEqual(seeded.cacheNames, ["liisu-daily-score-v1"]);
-    assert.equal(seeded.logicSearch, "?v=3");
-    assert.equal(seeded.logicHasOrange, false);
+    assert.deepEqual(seeded.cacheNames, ["liisu-daily-score-v2"]);
+    assert.equal(seeded.logicSearch, "?v=4");
+    assert.equal(seeded.logicHasOrange, true);
+    assert.equal(seeded.logicHasWater, false);
     assert.equal(seeded.controller.endsWith("/liisu/sw.js"), true);
 
     server.setMode("new");
