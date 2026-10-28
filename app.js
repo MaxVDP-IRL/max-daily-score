@@ -8,7 +8,7 @@ import {
   isoAddDays,
   daysBefore,
   canLogDate,
-} from "./logic.js?v=4";
+} from "./logic.js?v=5";
 
 export function startApp(tracker){
   if(!tracker || typeof tracker.storageKey !== "string" || typeof tracker.activeGoals !== "function"){
@@ -22,6 +22,7 @@ export function startApp(tracker){
     weekScore,
     rolling28,
     applyGoal,
+    showDescriptions = true,
   } = tracker;
 
   let viewDate = tallinnISO();
@@ -163,10 +164,13 @@ export function startApp(tracker){
       const title = document.createElement("div");
       title.className = "title";
       title.textContent = goal.title;
-      const desc = document.createElement("div");
-      desc.className = "desc";
-      desc.textContent = goal.desc;
-      left.append(title, desc);
+      left.append(title);
+      if(showDescriptions){
+        const desc = document.createElement("div");
+        desc.className = "desc";
+        desc.textContent = goal.desc;
+        left.append(desc);
+      }
 
       const toggle = document.createElement("div");
       toggle.className = "toggle";

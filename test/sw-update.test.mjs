@@ -12,8 +12,8 @@ import { activeGoals, daysBefore, isoAddDays, LIISU_GOAL_V2_FROM, liisuTracker, 
 // keep booting the worker that was actually installed.
 // v2 cached bare logic.js, which does not export maxTracker.
 const V2_COMMIT = "4130fd5";
-// Phones on the current release: Max cache v3, Liisu cache v1, shared ?v=3.
-const INSTALLED_COMMIT = "1251c0e";
+// Phones on the current release (PR #3): Max cache v4, Liisu cache v2, shared ?v=4.
+const INSTALLED_COMMIT = "b9c33eeb244116fad3027da76bcd54e445dc9028";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TYPES = {
@@ -208,6 +208,7 @@ test("new index renders against a v2 cache that still holds the old logic.js", {
       const logic = logicKey ? await (await cache.match(logicKey)).text() : "";
       return {
         titles: [...document.querySelectorAll(".kpi .title")].map((el) => el.textContent),
+        descs: [...document.querySelectorAll(".kpi .desc")].map((el) => el.textContent),
         label: document.querySelector("#day-label").innerText,
         controller: navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL,
         cacheNames: await caches.keys(),
@@ -219,13 +220,14 @@ test("new index renders against a v2 cache that still holds the old logic.js", {
     assert.deepEqual(errors, []);
     assert.equal(viewed.label.startsWith("Today"), true);
     assert.deepEqual(viewed.titles, activeGoals(tallinnISO()).map((goal) => goal.title));
+    assert.deepEqual(viewed.descs, [], "Max's goals render without description lines");
     assert.equal(viewed.controller.endsWith("/sw.js"), true);
     assert.ok(viewed.cacheNames.includes("max-daily-score-v2"));
     assert.equal(viewed.cachedLogicHasMaxTracker, false);
     assert.equal(viewed.stored.marker, "keep");
     assert.equal(viewed.stored.days["2026-10-20"].v.delegate, true);
-    assert.ok(server.requests.some((url) => url.startsWith("/logic.js?v=")));
-    assert.ok(server.requests.some((url) => url.startsWith("/app.js?v=")));
+    assert.ok(server.requests.some((url) => url.startsWith("/logic.js?v=5")));
+    assert.ok(server.requests.some((url) => url.startsWith("/app.js?v=5")));
   } finally {
     await browser.close();
     await server.close();
@@ -262,18 +264,19 @@ async function waitForController(page, server) {
   }
 }
 
-test("installed v3 worker renders the new page from ?v=4 modules", { timeout: 60000 }, async (t) => {
+test("installed v4 worker renders the new page from ?v=5 modules", { timeout: 60000 }, async (t) => {
   const browser = await launchChrome(t);
   if (!browser) return;
 
-  const oldDir = mkdtempSync(join(tmpdir(), "score-v3-"));
+  const oldDir = mkdtempSync(join(tmpdir(), "score-v4-"));
   writeInstalledSite(oldDir);
   const oldSw = readFileSync(join(oldDir, "sw.js"), "utf8");
   const oldLogic = readFileSync(join(oldDir, "logic.js"), "utf8");
-  assert.match(oldSw, /const CACHE_NAME = "max-daily-score-v3"/);
-  assert.equal(logicRev(oldSw), "3");
+  assert.match(oldSw, /const CACHE_NAME = "max-daily-score-v4"/);
+  assert.equal(logicRev(oldSw), "4");
   assert.equal(oldLogic.includes("maxTracker"), true);
-  assert.equal(oldLogic.includes("Orange light"), false);
+  assert.equal(oldLogic.includes("Orange light"), true);
+  assert.equal(oldLogic.includes("2l of water"), false);
 
   const server = await startServer(oldDir);
   const errors = [];
@@ -287,7 +290,7 @@ test("installed v3 worker renders the new page from ?v=4 modules", { timeout: 60
     await waitForController(page, server);
 
     const seeded = await page.evaluate(async () => {
-      const cache = await caches.open("max-daily-score-v3");
+      const cache = await caches.open("max-daily-score-v4");
       const keys = await cache.keys();
       const logicKey = keys.find((key) => new URL(key.url).pathname.endsWith("/logic.js"));
       const logic = logicKey ? await (await cache.match(logicKey)).text() : "";
@@ -295,30 +298,76 @@ test("installed v3 worker renders the new page from ?v=4 modules", { timeout: 60
         cacheNames: await caches.keys(),
         logicSearch: logicKey ? new URL(logicKey.url).search : "",
         logicHasOrange: logic.includes("Orange light"),
+        logicHasWater: logic.includes("2l of water"),
       };
     });
-    assert.ok(seeded.cacheNames.includes("max-daily-score-v3"));
-    assert.equal(seeded.logicSearch, "?v=3");
-    assert.equal(seeded.logicHasOrange, false);
+    assert.ok(seeded.cacheNames.includes("max-daily-score-v4"));
+    assert.equal(seeded.logicSearch, "?v=4");
+    assert.equal(seeded.logicHasOrange, true);
+    assert.equal(seeded.logicHasWater, false);
 
     server.setMode("new");
     const marked = server.requests.length;
     errors.length = 0;
     await page.reload({ waitUntil: "networkidle0" });
     await page.waitForSelector(".kpi .title", { timeout: 10000 });
+    const today = tallinnISO();
+    const todayGoals = activeGoals(today).map((goal) => goal.title);
     const viewed = await page.evaluate(async () => ({
       titles: [...document.querySelectorAll(".kpi .title")].map((el) => el.textContent),
+      descs: [...document.querySelectorAll(".kpi .desc")].map((el) => el.textContent),
+      note: document.getElementById("dayNote").textContent,
       label: document.querySelector("#day-label").innerText,
+      dots: [...document.querySelectorAll("#history .row")].map((row) => row.querySelectorAll(".dot").length),
       cacheNames: await caches.keys(),
     }));
     const fresh = server.requests.slice(marked);
     assert.deepEqual(errors, []);
     assert.equal(viewed.label.startsWith("Today"), true);
-    assert.deepEqual(viewed.titles, activeGoals(tallinnISO()).map((goal) => goal.title));
+    assert.deepEqual(viewed.titles, todayGoals);
+    assert.deepEqual(viewed.descs, [], "Max's goals render without description lines");
     assert.equal(viewed.titles.includes("Orange light"), false);
-    assert.ok(viewed.cacheNames.includes("max-daily-score-v3"));
-    assert.ok(fresh.some((url) => url.startsWith("/logic.js?v=") && !url.startsWith("/logic.js?v=3")));
-    assert.ok(fresh.some((url) => url.startsWith("/app.js?v=") && !url.startsWith("/app.js?v=3")));
+    assert.match(viewed.note, new RegExp(`This day 0/${todayGoals.length}`));
+    const expectedDots = [];
+    for (let i = 0; i < 14; i++) expectedDots.push(activeGoals(isoAddDays(today, -i)).length);
+    assert.deepEqual(viewed.dots, expectedDots);
+    assert.ok(viewed.cacheNames.includes("max-daily-score-v4"));
+    assert.ok(fresh.some((url) => url.startsWith("/logic.js?v=5")));
+    assert.ok(fresh.some((url) => url.startsWith("/app.js?v=5")));
+
+    const earlier = "2026-10-27";
+    if (earlier <= today) {
+      const steps = daysBefore(earlier, today);
+      await page.evaluate((n) => {
+        for (let i = 0; i < n; i++) document.getElementById("day-prev").click();
+      }, steps);
+      const earlierGoals = activeGoals(earlier).map((goal) => goal.title);
+      const back = await page.evaluate(() => ({
+        titles: [...document.querySelectorAll(".kpi .title")].map((el) => el.textContent),
+        descs: [...document.querySelectorAll(".kpi .desc")].map((el) => el.textContent),
+        note: document.getElementById("dayNote").textContent,
+        label: document.querySelector("#day-label").innerText,
+      }));
+      assert.equal(earlierGoals.length, 9);
+      assert.deepEqual(back.titles, earlierGoals);
+      assert.equal(back.titles.includes("2l of water"), false);
+      assert.equal(back.titles.includes("Vitamins"), false);
+      assert.deepEqual(back.descs, [], "earlier Max days also hide description lines");
+      assert.match(back.note, /This day 0\/9/);
+      assert.equal(back.label.includes("27 Oct 2026"), true);
+
+      if (steps > 0) {
+        await page.click("#day-label");
+        const returned = await page.evaluate(() => ({
+          titles: [...document.querySelectorAll(".kpi .title")].map((el) => el.textContent),
+          descs: [...document.querySelectorAll(".kpi .desc")].map((el) => el.textContent),
+          label: document.querySelector("#day-label").innerText,
+        }));
+        assert.equal(returned.label.startsWith("Today"), true);
+        assert.deepEqual(returned.titles, todayGoals);
+        assert.deepEqual(returned.descs, []);
+      }
+    }
   } finally {
     await browser.close();
     await server.close();
@@ -334,9 +383,10 @@ test("installed Liisu worker renders six goals today and five on earlier days", 
   writeInstalledSite(oldDir);
   const oldSw = readFileSync(join(oldDir, "liisu/sw.js"), "utf8");
   const oldLogic = readFileSync(join(oldDir, "logic.js"), "utf8");
-  assert.match(oldSw, /const CACHE_NAME = "liisu-daily-score-v1"/);
-  assert.equal(logicRev(oldSw), "3");
-  assert.equal(oldLogic.includes("Orange light"), false);
+  assert.match(oldSw, /const CACHE_NAME = "liisu-daily-score-v2"/);
+  assert.equal(logicRev(oldSw), "4");
+  assert.equal(oldLogic.includes("Orange light"), true);
+  assert.equal(oldLogic.includes("2l of water"), false);
 
   const server = await startServer(oldDir);
   const errors = [];
@@ -351,7 +401,7 @@ test("installed Liisu worker renders six goals today and five on earlier days", 
     await waitForController(page, server);
 
     const seeded = await page.evaluate(async () => {
-      const cache = await caches.open("liisu-daily-score-v1");
+      const cache = await caches.open("liisu-daily-score-v2");
       const keys = await cache.keys();
       const logicKey = keys.find((key) => new URL(key.url).pathname.endsWith("/logic.js"));
       const logic = logicKey ? await (await cache.match(logicKey)).text() : "";
@@ -359,12 +409,14 @@ test("installed Liisu worker renders six goals today and five on earlier days", 
         cacheNames: await caches.keys(),
         logicSearch: logicKey ? new URL(logicKey.url).search : "",
         logicHasOrange: logic.includes("Orange light"),
+        logicHasWater: logic.includes("2l of water"),
         controller: navigator.serviceWorker.controller.scriptURL,
       };
     });
-    assert.deepEqual(seeded.cacheNames, ["liisu-daily-score-v1"]);
-    assert.equal(seeded.logicSearch, "?v=3");
-    assert.equal(seeded.logicHasOrange, false);
+    assert.deepEqual(seeded.cacheNames, ["liisu-daily-score-v2"]);
+    assert.equal(seeded.logicSearch, "?v=4");
+    assert.equal(seeded.logicHasOrange, true);
+    assert.equal(seeded.logicHasWater, false);
     assert.equal(seeded.controller.endsWith("/liisu/sw.js"), true);
 
     server.setMode("new");
@@ -374,9 +426,11 @@ test("installed Liisu worker renders six goals today and five on earlier days", 
     await page.waitForSelector(".kpi .title", { timeout: 10000 });
 
     const today = tallinnISO();
-    const todayGoals = liisuTracker.activeGoals(today).map((goal) => goal.title);
+    const todayGoals = liisuTracker.activeGoals(today);
+    const todayTitles = todayGoals.map((goal) => goal.title);
     const viewed = await page.evaluate(() => ({
       titles: [...document.querySelectorAll(".kpi .title")].map((el) => el.textContent),
+      descs: [...document.querySelectorAll(".kpi .desc")].map((el) => el.textContent),
       note: document.getElementById("dayNote").textContent,
       label: document.querySelector("#day-label").innerText,
       dots: [...document.querySelectorAll("#history .row")].map((row) => row.querySelectorAll(".dot").length),
@@ -384,13 +438,16 @@ test("installed Liisu worker renders six goals today and five on earlier days", 
     const fresh = server.requests.slice(marked);
     assert.deepEqual(errors, []);
     assert.equal(viewed.label.startsWith("Today"), true);
-    assert.deepEqual(viewed.titles, todayGoals);
-    assert.match(viewed.note, new RegExp(`This day 0/${todayGoals.length}`));
+    assert.deepEqual(viewed.titles, todayTitles);
+    assert.deepEqual(viewed.descs, todayGoals.map((goal) => goal.desc));
+    assert.equal(viewed.titles.includes("2l of water"), false);
+    assert.equal(viewed.titles.includes("Vitamins"), false);
+    assert.match(viewed.note, new RegExp(`This day 0/${todayTitles.length}`));
     const expectedDots = [];
     for (let i = 0; i < 14; i++) expectedDots.push(liisuTracker.activeGoals(isoAddDays(today, -i)).length);
     assert.deepEqual(viewed.dots, expectedDots);
-    assert.ok(fresh.some((url) => url.startsWith("/logic.js?v=") && !url.startsWith("/logic.js?v=3")));
-    assert.ok(fresh.some((url) => url.startsWith("/app.js?v=") && !url.startsWith("/app.js?v=3")));
+    assert.ok(fresh.some((url) => url.startsWith("/logic.js?v=5")));
+    assert.ok(fresh.some((url) => url.startsWith("/app.js?v=5")));
 
     const before = isoAddDays(LIISU_GOAL_V2_FROM, -1);
     if (before <= today) {
@@ -398,12 +455,15 @@ test("installed Liisu worker renders six goals today and five on earlier days", 
       await page.evaluate((n) => {
         for (let i = 0; i < n; i++) document.getElementById("day-prev").click();
       }, steps);
-      const earlierGoals = liisuTracker.activeGoals(before).map((goal) => goal.title);
+      const earlierGoalSet = liisuTracker.activeGoals(before);
+      const earlierGoals = earlierGoalSet.map((goal) => goal.title);
       const earlier = await page.evaluate(() => ({
         titles: [...document.querySelectorAll(".kpi .title")].map((el) => el.textContent),
+        descs: [...document.querySelectorAll(".kpi .desc")].map((el) => el.textContent),
         note: document.getElementById("dayNote").textContent,
       }));
       assert.deepEqual(earlier.titles, earlierGoals);
+      assert.deepEqual(earlier.descs, earlierGoalSet.map((goal) => goal.desc));
       assert.equal(earlier.titles.includes("Orange light"), false);
       assert.match(earlier.note, new RegExp(`This day 0/${earlierGoals.length}`));
 
@@ -425,12 +485,14 @@ test("installed Liisu worker renders six goals today and five on earlier days", 
         await page.click("#day-label");
         const back = await page.evaluate(() => ({
           titles: [...document.querySelectorAll(".kpi .title")].map((el) => el.textContent),
+          descs: [...document.querySelectorAll(".kpi .desc")].map((el) => el.textContent),
           note: document.getElementById("dayNote").textContent,
           label: document.querySelector("#day-label").innerText,
         }));
         assert.equal(back.label.startsWith("Today"), true);
-        assert.deepEqual(back.titles, todayGoals);
-        assert.match(back.note, new RegExp(`This day 0/${todayGoals.length}`));
+        assert.deepEqual(back.titles, todayTitles);
+        assert.deepEqual(back.descs, todayGoals.map((goal) => goal.desc));
+        assert.match(back.note, new RegExp(`This day 0/${todayTitles.length}`));
       }
     }
   } finally {

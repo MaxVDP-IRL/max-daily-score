@@ -5,9 +5,11 @@ import {
   LIISU_STORAGE_KEY,
   GOAL_V2_FROM,
   GOAL_V3_FROM,
+  GOAL_V4_FROM,
   GOALS_V1,
   GOALS_V2,
   GOALS_V3,
+  GOALS_V4,
   LIISU_GOALS,
   LIISU_GOALS_V2,
   LIISU_GOAL_V2_FROM,
@@ -63,7 +65,9 @@ test("goal set switches on the ship date and does not reuse retired ids", () => 
   assert.equal(goalSetIdFor("2026-10-21"), "v2");
   assert.equal(goalSetIdFor("2026-10-23"), "v2");
   assert.equal(goalSetIdFor("2026-10-24"), "v3");
-  assert.equal(goalSetIdFor("2026-12-31"), "v3");
+  assert.equal(goalSetIdFor("2026-10-27"), "v3");
+  assert.equal(goalSetIdFor("2026-10-28"), "v4");
+  assert.equal(goalSetIdFor("2026-12-31"), "v4");
 
   assert.deepEqual(ids("2026-10-18"), ["delegate", "stop21", "kids30", "output", "review"]);
   assert.deepEqual(ids("2026-10-20"), ["delegate", "stop21", "kids30", "output"]);
@@ -83,6 +87,7 @@ test("goal set switches on the ship date and does not reuse retired ids", () => 
   for (const retired of ["delegate", "output", "review"]) {
     assert.equal(GOALS_V2.some((goal) => goal.id === retired), false);
     assert.equal(GOALS_V3.some((goal) => goal.id === retired), false);
+    assert.equal(GOALS_V4.some((goal) => goal.id === retired), false);
   }
   for (const kept of ["stop21", "kids30"]) {
     const before = GOALS_V1.find((goal) => goal.id === kept);
@@ -296,6 +301,121 @@ test("a week crossing 2026-10-24 sums six-goal and nine-goal days separately", (
   assert.equal(week.start, "2026-10-19");
   assert.equal(week.totalNum, 6 + 9);
   assert.equal(week.totalDen, 6 + 9);
+});
+
+test("goals added on 2026-10-28 do not score or save on earlier days", () => {
+  assert.equal(GOAL_V4_FROM, "2026-10-28");
+  const v3Ids = [
+    "project", "stop21", "kids30", "noshort", "exercise", "bedtime",
+    "food", "nosugar", "nopickup",
+  ];
+  const v4Ids = [...v3Ids, "water", "vitamins"];
+  assert.deepEqual(ids("2026-10-27"), v3Ids);
+  assert.deepEqual(ids("2026-10-28"), v4Ids);
+  assert.deepEqual(ids("2026-10-29"), v4Ids);
+  assert.equal(ids("2026-10-27").includes("water"), false);
+  assert.equal(ids("2026-10-27").includes("vitamins"), false);
+  assert.deepEqual(
+    GOALS_V4.slice(GOALS_V3.length).map((goal) => [goal.id, goal.title, goal.desc]),
+    [
+      ["water", "2l of water", "Drank 2l of water"],
+      ["vitamins", "Vitamins", "Took vitamins"],
+    ],
+  );
+  for (const goal of GOALS_V3) {
+    const current = GOALS_V4.find((item) => item.id === goal.id);
+    assert.ok(current);
+    assert.equal(current.title, goal.title);
+    assert.equal(current.desc, goal.desc);
+  }
+  assert.equal(GOALS_V3.some((goal) => goal.id === "water" || goal.id === "vitamins"), false);
+
+  const liisuIds = ["thought", "walk", "food", "kidpos", "toldkids", "orange"];
+  for (const iso of ["2026-10-27", "2026-10-28", "2026-12-31"]) {
+    assert.deepEqual(liisuTracker.activeGoals(iso).map((goal) => goal.id), liisuIds);
+    assert.equal(liisuTracker.activeGoals(iso).some((goal) => goal.id === "water"), false);
+    assert.equal(liisuTracker.activeGoals(iso).some((goal) => goal.id === "vitamins"), false);
+  }
+
+  const nine = {};
+  for (const id of v3Ids) nine[id] = true;
+  const stuffed = { ...nine, water: true, vitamins: true };
+  assert.deepEqual(dayScore("2026-10-27", { v: stuffed }), { num: 9, denom: 9 });
+  assert.equal(isComplete("2026-10-27", { v: stuffed }), true);
+  assert.deepEqual(dayScore("2026-10-23", { v: stuffed }), { num: 6, denom: 6 });
+  assert.deepEqual(dayScore("2026-10-28", { v: nine }), { num: 9, denom: 11 });
+  assert.equal(isComplete("2026-10-28", { v: nine }), false);
+  assert.deepEqual(dayScore("2026-10-28", { v: stuffed }), { num: 11, denom: 11 });
+  assert.equal(isComplete("2026-10-28", { v: { ...stuffed, vitamins: false } }), true);
+
+  const today = "2026-10-28";
+  const original = {
+    days: { "2026-10-27": { ts: 4, v: { project: true, food: false } } },
+    untouched: true,
+  };
+  const rejectedWater = applyGoal(original, "2026-10-27", "water", true, today, 1);
+  assert.equal(rejectedWater.ok, false);
+  assert.equal(rejectedWater.data, original);
+  assert.equal(applyGoal(original, "2026-10-27", "vitamins", false, today, 1).ok, false);
+  assert.equal(applyGoal(original, "2026-10-24", "water", true, today, 1).ok, false);
+  assert.equal(applyGoal(original, "2026-10-23", "vitamins", true, today, 1).ok, false);
+  assert.equal(liisuTracker.applyGoal({ days: {} }, today, "water", true, today, 1).ok, false);
+  assert.equal(liisuTracker.applyGoal({ days: {} }, today, "vitamins", true, today, 1).ok, false);
+
+  const saved = applyGoal(original, "2026-10-27", "nopickup", true, today, 2);
+  assert.equal(saved.ok, true);
+  assert.equal(saved.data.untouched, true);
+  assert.deepEqual(saved.data.days["2026-10-27"].v, { project: true, food: false, nopickup: true });
+  assert.equal(saved.data.days["2026-10-27"].ts, 4);
+  assert.deepEqual(original.days["2026-10-27"].v, { project: true, food: false });
+
+  const added = applyGoal(saved.data, today, "water", true, today, 3);
+  assert.equal(added.ok, true);
+  const withVitamins = applyGoal(added.data, today, "vitamins", false, today, 4);
+  assert.equal(withVitamins.ok, true);
+  assert.deepEqual(withVitamins.data.days[today], { ts: 3, v: { water: true, vitamins: false } });
+  assert.deepEqual(withVitamins.data.days["2026-10-27"].v, { project: true, food: false, nopickup: true });
+  assert.equal(withVitamins.data.days["2026-10-27"].v.water, undefined);
+  assert.equal(withVitamins.data.days["2026-10-27"].v.vitamins, undefined);
+  assert.deepEqual(dayScore(today, withVitamins.data.days[today]), { num: 1, denom: 11 });
+  assert.deepEqual(dayScore("2026-10-27", withVitamins.data.days["2026-10-27"]), { num: 2, denom: 9 });
+
+  const fill = (iso, tracker = { activeGoals }) => {
+    const v = {};
+    for (const goal of tracker.activeGoals(iso)) v[goal.id] = true;
+    return { ts: 1, v };
+  };
+  const data = {
+    days: {
+      "2026-10-27": fill("2026-10-27"),
+      "2026-10-28": fill("2026-10-28"),
+    },
+  };
+  const week = weekScore(data, "2026-10-28");
+  assert.equal(week.start, "2026-10-26");
+  assert.equal(week.totalNum, 9 + 11);
+  assert.equal(week.totalDen, 9 + 11);
+
+  const liisuData = {
+    days: {
+      "2026-10-27": fill("2026-10-27", liisuTracker),
+      "2026-10-28": fill("2026-10-28", liisuTracker),
+    },
+  };
+  const liisuWeek = liisuTracker.weekScore(liisuData, "2026-10-28");
+  assert.equal(liisuWeek.start, "2026-10-26");
+  assert.equal(liisuWeek.totalNum, 6 + 6);
+  assert.equal(liisuWeek.totalDen, 6 + 6);
+});
+
+test("Max's tracker hides descriptions and Liisu's tracker keeps them", () => {
+  assert.equal(maxTracker.showDescriptions, false);
+  assert.equal(liisuTracker.showDescriptions, true);
+  for (const goal of GOALS_V4) assert.equal(typeof goal.desc, "string");
+  for (const goal of LIISU_GOALS_V2) {
+    assert.equal(typeof goal.desc, "string");
+    assert.ok(goal.desc.length > 0);
+  }
 });
 
 test("Liisu's days before 2026-10-26 keep her original five goals", () => {

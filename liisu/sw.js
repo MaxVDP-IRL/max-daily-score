@@ -5,7 +5,7 @@
 // SHARED PRECACHE: app.js, logic.js, and styles.css are cached here and in
 // ../sw.js. If you change one of those files, bump ?v= everywhere it is
 // referenced and bump BOTH cache names.
-const CACHE_NAME = "liisu-daily-score-v2";
+const CACHE_NAME = "liisu-daily-score-v3";
 const CACHE_PREFIX = "liisu-daily-score-";
 const ASSETS = [
   "./",
@@ -14,9 +14,9 @@ const ASSETS = [
   "./sw.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
-  "../styles.css?v=4",
-  "../app.js?v=4",
-  "../logic.js?v=4"
+  "../styles.css?v=5",
+  "../app.js?v=5",
+  "../logic.js?v=5"
 ];
 
 self.addEventListener("install", (event) => {
