@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 
 // app.js, logic.js, and styles.css are precached by both service workers.
 // Editing any of them means bumping SHARED_REV and both cache names together.
-const SHARED_REV = "4";
-const MAX_CACHE = "max-daily-score-v4";
-const LIISU_CACHE = "liisu-daily-score-v2";
+const SHARED_REV = "5";
+const MAX_CACHE = "max-daily-score-v5";
+const LIISU_CACHE = "liisu-daily-score-v3";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFileSync(join(root, path), "utf8");

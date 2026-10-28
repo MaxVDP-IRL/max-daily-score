@@ -14,9 +14,11 @@ export const TZ = "Europe/Tallinn";
 // set, including when that day is edited later.
 // v1: before 2026-10-21, with the Sunday-only weekly review
 // v2: 2026-10-21 through 2026-10-23, the six daily goals
-// v3: 2026-10-24 onward, those six plus food, sugar, and phone pickup
+// v3: 2026-10-24 through 2026-10-27, those six plus food, sugar, and phone pickup
+// v4: 2026-10-28 onward, those nine plus 2l of water and vitamins
 export const GOAL_V2_FROM = "2026-10-21";
 export const GOAL_V3_FROM = "2026-10-24";
+export const GOAL_V4_FROM = "2026-10-28";
 
 const freezeGoals = (goals) => Object.freeze(goals.map((goal) => Object.freeze({ ...goal })));
 
@@ -42,6 +44,12 @@ export const GOALS_V3 = freezeGoals([
   { id: "food", title: "Good food choice", desc: "Made a good food choice" },
   { id: "nosugar", title: "No free sugar", desc: "Skipped free sugar" },
   { id: "nopickup", title: "No unnecessary phone pickup", desc: "No unnecessary phone pickup" },
+]);
+
+export const GOALS_V4 = freezeGoals([
+  ...GOALS_V3,
+  { id: "water", title: "2l of water", desc: "Drank 2l of water" },
+  { id: "vitamins", title: "Vitamins", desc: "Took vitamins" },
 ]);
 
 // Tallinn calendar day Liisu's sixth goal ships. She has logged the five-goal
@@ -245,6 +253,7 @@ const maxApi = createTracker([
   { id: "v1", from: "0000-00-00", goals: GOALS_V1, weekdaySkip: ["review"] },
   { id: "v2", from: GOAL_V2_FROM, goals: GOALS_V2 },
   { id: "v3", from: GOAL_V3_FROM, goals: GOALS_V3 },
+  { id: "v4", from: GOAL_V4_FROM, goals: GOALS_V4 },
 ]);
 
 export const goalSetIdFor = maxApi.goalSetIdFor;
@@ -257,6 +266,8 @@ export const applyGoal = maxApi.applyGoal;
 
 export const maxTracker = Object.freeze({
   storageKey: STORAGE_KEY,
+  // The shared screen reads this. Liisu keeps the explainer line under each goal.
+  showDescriptions: false,
   goalSetIdFor,
   activeGoals,
   dayScore,
@@ -273,5 +284,6 @@ const liisuApi = createTracker([
 
 export const liisuTracker = Object.freeze({
   storageKey: LIISU_STORAGE_KEY,
+  showDescriptions: true,
   ...liisuApi,
 });
